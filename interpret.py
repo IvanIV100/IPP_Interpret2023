@@ -100,6 +100,25 @@ wrongOperandValue = Error("Wrong operand value, e.g. division by zero\n", 57)
 wrongStringManipulation = Error("Wrong string manipulation", 58)
 
 
+def load_by_line(file):
+    if file:
+        try:
+            with open(file, "r") as f:
+                data = f.readlines()
+                f.close()
+        except (Exception,):
+            Error.error_exit(cannotOpenSourceFiles)
+    else:
+        return None
+
+    return [line.strip() for line in data]
+
+
+def load_xml():
+    tree = ET.parse('XMLSource.xml')
+
+
+# if missing fill in stdin load
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Description of your program')
     parser.add_argument('--source', nargs='?', help='First argument')
@@ -113,14 +132,52 @@ def parse_arguments():
         arg_list.append(args.input)
     if len(arg_list) == 0:
         Error.error_exit(wrongParameters)
+    return args.source, args.input
 
-    print(arg_list)
-    return arg_list
 
+def format_xml_to_list(root):
+    xml_list = []
+
+    for child in root:
+        child_arguments = []
+
+        for argument_iter in child:
+            output = re.search("^arg([1-3])$", argument_iter.tag)
+            order = output.group(1)
+            arg = Argument(argument_iter.get("type"), argument_iter.text, order)
+            child_arguments.append(arg)
+
+        child_arguments.sort(key=lambda argument: arg.order)
+
+        instruct = Instruction(child.get("opcode"), child_arguments, child.get("order"))
+        xml_list.append(instruct)
+
+    xml_list.sort(key=lambda instruction: instruct.order)
+    # maybe add arg checks here.
+    return xml_list
+
+
+def main():
+    source_file, input_file = parse_arguments()
+    if source_file:
+        source_split = load_by_line(source_file)
+    else:
+        source_split = [line.strip() for line in sys.stdin]
+
+    if input_file:
+        input_split = load_by_line(input_file)
+    else:
+        input_split = [line.strip() for line in sys.stdin]
+
+    try:
+        root = ET.fromstringlist(source_split)
+    except(Exception,):
+        Error.error_exit(xmlNotWellFormated)
+
+    list_instructions = format_xml_to_list(root)
+    print(list_instructions)
+    exit(0)
 
 if __name__ == '__main__':
-    argus = parse_arguments()
-
-    print(len(argus))
-
+    main()
 
