@@ -7,35 +7,35 @@ import re
 
 
 class Argument:
-    def __init__(self, type, name="",  order=0):
+    def __init__(self, argtype, name="",  order=0):
         self.name = name
-        self.type = type
+        self.type = argtype
         self.order = int(order)
 
     def __str__(self):
         if self.name:
             return self.name
         else:
-            if self.type:
-                return f" <{self.type}>"
+            if self.argtype:
+                return f" <{self.argtype}>"
             else:
                 return ""
 
     def __eq__(self, other):
 
-        if self.type == other.type:
+        if self.argtype == other.type:
             return True
-        elif "symb" == self.type:
-            if other.type in ("var", "string", "int", "bool", "nil"):
+        elif "symb" == self.argtype:
+            if other.argtype in ("var", "string", "int", "bool", "nil"):
                 return True
         elif "symb" == other.type:
-            if self.type in ("var", "string", "int", "bool", "nil"):
+            if self.argtype in ("var", "string", "int", "bool", "nil"):
                 return True
-        elif "type" == self.type:
-            if other.type in ("string", "int", "bool"):
+        elif "type" == self.argtype:
+            if other.argtype in ("string", "int", "bool"):
                 return True
-        elif "type" == other.type:
-            if self.type in ("string", "int", "bool"):
+        elif "type" == other.argtype:
+            if self.argtype in ("string", "int", "bool"):
                 return True
         return False
 
@@ -118,7 +118,7 @@ def load_xml():
     tree = ET.parse('XMLSource.xml')
 
 
-# if missing fill in stdin load
+
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Description of your program')
     parser.add_argument('--source', nargs='?', help='First argument')
@@ -144,17 +144,55 @@ def format_xml_to_list(root):
         for argument_iter in child:
             output = re.search("^arg([1-3])$", argument_iter.tag)
             order = output.group(1)
-            arg = Argument(argument_iter.get("type"), argument_iter.text, order)
-            child_arguments.append(arg)
+            argument = Argument(argument_iter.get("type"), argument_iter.text, order)
+            child_arguments.append(argument)
 
-        child_arguments.sort(key=lambda argument: arg.order)
+        child_arguments.sort(key=lambda argument: argument.order)
 
-        instruct = Instruction(child.get("opcode"), child_arguments, child.get("order"))
-        xml_list.append(instruct)
+        for index, argument in enumerate(child_arguments, start=1):
+            if argument.order != index:
+                Error.error_exit(xmlStructureSyntaxLex)
 
-    xml_list.sort(key=lambda instruction: instruct.order)
+        instruction = Instruction(child.get("opcode"), child_arguments, child.get("order"))
+        xml_list.append(instruction)
+
+    xml_list.sort(key=lambda instruction: instruction.order)
     # maybe add arg checks here.
     return xml_list
+
+
+def check_labels(list_to_check):
+    labels = []
+
+    for instruction in list_to_check:
+        if instruction.name == "LABEL":
+            label_name = instruction.arguments[0].name
+            if label_name in labels:
+                Error.error_exit(semantics)
+
+            labels.append(label_name)
+        elif instruction.name != "LABEL":
+            for argument in instruction.arguments:
+                if argument.type == "label":
+                    if argument.name not in labels:
+                        Error.error_exit(semantics)
+
+
+def replace_escape_sequences(list_to_clean):
+    for instruction in list_to_clean:
+        for argument in instruction.arguments:
+            if argument.type == "string":
+                unicode_list = re.findall(r'(\\[0-9]{3})+', argument.name)
+
+                for escaped_uni in unicode_list:
+                    uni_char = chr(int(escaped_uni[1:]))
+                    argument.name = argument.name.replace(escaped_uni, uni_char)
+
+    return list_to_clean
+
+
+def interpret_code(list_cleared, input_split):
+    pass
 
 
 def main():
@@ -175,8 +213,15 @@ def main():
         Error.error_exit(xmlNotWellFormated)
 
     list_instructions = format_xml_to_list(root)
-    print(list_instructions)
+    for each in list_instructions:
+        print(each)
+    check_labels(list_instructions)
+    list_instructions_cleared = replace_escape_sequences(list_instructions)
+
+    # interpret_code(list_instructions_cleared, input_split)
+
     exit(0)
+
 
 if __name__ == '__main__':
     main()
