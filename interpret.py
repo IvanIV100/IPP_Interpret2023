@@ -5,6 +5,20 @@ import argparse
 import xml.etree.ElementTree as ET
 import re
 
+GF = {}
+LF = []
+TF = None
+stack_push = []
+stack_return = []
+data_to_transfer = None
+data_in_place = None
+source_first = None
+source_second = None
+label_jump = None
+
+current_instruction = 0
+done_count = 0
+
 
 class Argument:
     def __init__(self, argtype, name="",  order=0):
@@ -178,21 +192,128 @@ def check_labels(list_to_check):
                         Error.error_exit(semantics)
 
 
-def replace_escape_sequences(list_to_clean):
-    for instruction in list_to_clean:
-        for argument in instruction.arguments:
-            if argument.type == "string":
-                unicode_list = re.findall(r'(\\[0-9]{3})+', argument.name)
+def label_index(list_cleared):
+    labels_indexed = {}
+    for index, instruction in enumerate(list_cleared):
+        if instruction.name == "LABEL":
+            label = instruction.arguments[0].name
+            labels_indexed[label] = index
+    return labels_indexed
 
-                for escaped_uni in unicode_list:
-                    uni_char = chr(int(escaped_uni[1:]))
-                    argument.name = argument.name.replace(escaped_uni, uni_char)
 
-    return list_to_clean
+def no_argument_instruction(instruction):
+    match instruction.name.upper():
+        case "CREATEFRAME":
+            print("CREATEFRAME")
+        case "PUSHFRAME":
+            print("PUSHFRAME")
+        case "POPFRAME":
+            print("POPFRAME")
+        case "RETURN":
+            print("RETURN")
+        case "BREAK":
+            print("BREAK")
+
+def one_argument_instruction(instruction):
+    match instruction.name.upper():
+        case "PUSHS":
+            print("PUSHS")
+        case "POPS":
+            print("POPS")
+        case "DEFVAR":
+            print("DEFVAR")
+        case "CALL":
+            print("CALL")
+        case "LABEL":
+            print("LABEL")
+        case "JUMP":
+            print("JUMP")
+        case "DPRINT":
+            print("DPRINT")
+        case "WRITE":
+            print("WRITE")
+        case "EXIT":
+            print("EXIT")
+
+def two_argument_instruction(instruction):
+    match instruction.name.upper():
+        case "MOVE":
+            print("MOVE")
+        case "INT2CHAR":
+            print("INT2CHAR")
+        case "STRLEN":
+            print("STRLEN")
+        case "TYPE":
+            print("TYPE")
+
+
+def three_argument_instruction(instruction):
+    match instruction.name.upper():
+        case "ADD":
+            print("ADD")
+        case "SUB":
+            print("SUB")
+        case "MUL":
+            print("MUL")
+        case "IDIV":
+            print("IDIV")
+        case "LT":
+            print("LT")
+        case "GT":
+            print("GT")
+        case "EQ":
+            print("EQ")
+        case "AND":
+            print("AND")
+        case "OR":
+            print("OR")
+        case "NOT":
+            print("NOT")
+        case "STRI2INT":
+            print("STRI2INT")
+        case "CONCAT":
+            print("CONCAT")
+        case "GETCHAR":
+            print("GETCHAR")
+        case "SETCHAR":
+            print("SETCHAR")
+        case "JUMPIFEQ":
+            print("JUMPIFEQ")
+        case "JUMPIFNEQ":
+            print("JUMPIFNEQ")
 
 
 def interpret_code(list_cleared, input_split):
-    pass
+    global GF
+    global TF
+    global LF
+    global stack_push
+    global stack_return
+    global data_to_transfer
+    global data_in_place
+    global source_first
+    global source_second
+    global label_jump
+    global current_instruction
+    global done_count
+
+    label_index(list_cleared)
+
+    while current_instruction < len(list_cleared):
+        instruction = list_cleared[current_instruction]
+        current_instruction += 1
+        done_count += 1
+
+        for argument in instruction.arguments:
+            if argument.name.upper() in ("CREATEFRAME", "PUSHFRAME", "POPFRAME", "RETURN", "BREAK"):
+                no_argument_instruction(argument)
+
+
+
+
+
+
+
 
 
 def main():
