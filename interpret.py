@@ -14,10 +14,12 @@ data_to_transfer = None
 data_in_place = None
 source_first = None
 source_second = None
+labels = None
 label_jump = None
 
+
 current_instruction = 0
-done_count = 0
+done_instruction_count = 0
 
 
 class Argument:
@@ -85,6 +87,17 @@ class Instruction:
         return not self.__eq__(self, other)
 
 
+class Variable:
+    def __init__(self, name, value, type_var):
+        self.name = name
+        self.value = value
+        self.type_var = type_var
+
+    def change_var(self, value, type_var):
+        self.value = value
+        self.type_var = type_var
+
+
 class Error:
 
     def __init__(self, description, code):
@@ -128,11 +141,6 @@ def load_by_line(file):
     return [line.strip() for line in data]
 
 
-def load_xml():
-    tree = ET.parse('XMLSource.xml')
-
-
-
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Description of your program')
     parser.add_argument('--source', nargs='?', help='First argument')
@@ -171,20 +179,19 @@ def format_xml_to_list(root):
         xml_list.append(instruction)
 
     xml_list.sort(key=lambda instruction: instruction.order)
-    # maybe add arg checks here.
     return xml_list
 
 
+# check if using correctly
 def check_labels(list_to_check):
     labels = []
-
     for instruction in list_to_check:
         if instruction.name == "LABEL":
             label_name = instruction.arguments[0].name
             if label_name in labels:
                 Error.error_exit(semantics)
-
             labels.append(label_name)
+
         elif instruction.name != "LABEL":
             for argument in instruction.arguments:
                 if argument.type == "label":
@@ -201,89 +208,378 @@ def label_index(list_cleared):
     return labels_indexed
 
 
+def handle_variable(var_to_handle, data=None):
+    global GF
+    global TF
+    global LF
+
+    frame = var_to_handle.split("@")[0]
+    var_name = var_to_handle.split("@")[1]
+
+    match frame:
+        case "GF":
+            if var_name not in GF:
+                Error.error_exit(variableNotDefined)
+            if data:
+                var_built = Variable(var_name, data.value, data.type)
+                GF[var_name] = var_built
+                return GF[var_name]
+            else:
+                return GF[var_name]
+        case "TF":
+            if TF == None:
+                Error.error_exit(frameNotExists)
+            elif var_name not in TF:
+                Error.error_exit(variableNotDefined)
+            else:
+                if data:
+                    var_built = Variable(var_name, data.value, data.type)
+                    TF[var_name] = var_built
+                    return TF[var_name]
+                else:
+                    return TF[var_name]
+        case "LF":
+            if len(LF) == 0:
+                Error.error_exit(frameNotExists)
+            if var_name not in LF[-1]:
+                Error.error_exit(variableNotDefined)
+            if data:
+                var_built = Variable(var_name, data.value, data.type)
+                LF[-1][var_name] = var_built
+                return LF[-1][var_name]
+            else:
+                return LF[-1][var_name]
+        case _:
+            Error.error_exit(wrongOperandType)
+
+
 def no_argument_instruction(instruction):
+    global TF
+    global LF
+    global GF
+    global current_instruction
+    global stack_return
     match instruction.name.upper():
         case "CREATEFRAME":
-            print("CREATEFRAME")
-        case "PUSHFRAME":
-            print("PUSHFRAME")
-        case "POPFRAME":
-            print("POPFRAME")
-        case "RETURN":
-            print("RETURN")
-        case "BREAK":
-            print("BREAK")
+            TF = {}
 
-def one_argument_instruction(instruction):
+        case "PUSHFRAME":
+            if TF == None:
+                Error.error_exit(frameNotExists)
+            LF.append(TF)
+            TF = None
+
+        case "POPFRAME":
+            if len(LF) == 0:
+                Error.error_exit(frameNotExists)
+            TF = LF.pop()
+
+        case "RETURN":
+            if len(stack_return) == 0:
+                Error.error_exit(missingValue)
+            current_instruction = stack_return.pop()
+
+        case "BREAK":
+            # add more info
+            sys.stderr.write("Current instruction count: " + str(current_instruction) + "\n")
+
+
+def one_argument_instruction(instruction, labels=None):
+    global stack_push
+    global data_to_transfer
+    global source_first
+    global current_instruction
+
     match instruction.name.upper():
+
         case "PUSHS":
-            print("PUSHS")
+            source_first = instruction.arguments[0].name
+            data_to_transfer = handle_variable(source_first)
+            stack_push.append(data_to_transfer)
+
         case "POPS":
-            print("POPS")
+            if len(stack_push) == 0:
+                Error.error_exit(missingValue)
+            data_to_transfer = stack_push.pop()
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "DEFVAR":
-            print("DEFVAR")
+            split_tuple = instruction.arguments[0].name.split("@")
+            frame = split_tuple[0]
+            var_name = split_tuple[1]
+            # check scopes and names reference
+            if var_name in GF or var_name in TF or var_name in LF[-1]:
+                Error.error_exit(semantics)
+            match frame:
+                case "GF":
+                    GF[var_name] = None
+                case "TF":
+                    TF[var_name] = None
+                case "LF":
+                    LF[-1][var_name] = None
+
         case "CALL":
-            print("CALL")
+            stack_return.append(current_instruction+1)
+            current_instruction = labels[instruction.arguments[0].name]
+
         case "LABEL":
-            print("LABEL")
+            pass    # already handled
+
         case "JUMP":
-            print("JUMP")
+            current_instruction = labels[instruction.arguments[0].name]
+
         case "DPRINT":
-            print("DPRINT")
+            if instruction.arguments[0].type == "var":
+                data_to_transfer = handle_variable(instruction.arguments[0].name)
+                sys.stderr.write(str(data_to_transfer.value) + "\n")
+            else:
+                # check if instruction passed is in somethign@something format
+                data_to_transfer = instruction.arguments[0].name
+                sys.stderr.write(str(data_to_transfer) + "\n")
         case "WRITE":
-            print("WRITE")
+            if instruction.arguments[0].type == "var":
+                data_to_transfer = handle_variable(instruction.arguments[0].name)
+            else:
+                data_to_transfer = instruction.arguments[0].name
+            sys.stdout.write(str(data_to_transfer) + "\n")
         case "EXIT":
-            print("EXIT")
+            if int(instruction.arguments[0].name) < 0 or int(instruction.arguments[0].name) > 49:
+                Error.error_exit(wrongOperandValue)
+            exit(int(instruction.arguments[0].name))
+
 
 def two_argument_instruction(instruction):
+    global data_to_transfer
+    global source_first
+    global source_second
     match instruction.name.upper():
         case "MOVE":
-            print("MOVE")
+            if instruction.arguments[1].type == "var":
+                data_to_transfer = handle_variable(instruction.arguments[1].name)
+            else:
+                data_to_transfer = instruction.arguments[1].name
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "INT2CHAR":
-            print("INT2CHAR")
+            try:
+                data_to_transfer = chr(instruction.arguments[1].name)
+            except ValueError:
+                Error.error_exit(wrongStringManipulation)
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "STRLEN":
-            print("STRLEN")
+            data_to_transfer = len(instruction.arguments[1].name)
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "TYPE":
-            print("TYPE")
+            data_to_transfer = instruction.arguments[1].type
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
+        case "NOT":
+            # finish this
+            print("NOT")
 
 
 def three_argument_instruction(instruction):
+    global data_to_transfer
+    global current_instruction
+    global labels
+    global label_jump
+
     match instruction.name.upper():
         case "ADD":
-            print("ADD")
+            if instruction.arguments[1].type == "int" and instruction.arguments[2].type == "int":
+                data_to_transfer = int(instruction.arguments[1].name) + int(instruction.arguments[2].name)
+            else:
+                Error.error_exit(wrongOperandType)
+            res_var = Variable(data_to_transfer, "int")
+            handle_variable(instruction.arguments[0].name, res_var)
+
         case "SUB":
-            print("SUB")
+            if instruction.arguments[1].type == "int" and instruction.arguments[2].type == "int":
+                data_to_transfer = int(instruction.arguments[1].name) - int(instruction.arguments[2].name)
+            else:
+                Error.error_exit(wrongOperandType)
+            res_var = Variable(data_to_transfer, "int")
+            handle_variable(instruction.arguments[0].name, res_var)
+
         case "MUL":
-            print("MUL")
+            if instruction.arguments[1].type == "int" and instruction.arguments[2].type == "int":
+                data_to_transfer = int(instruction.arguments[1].name) * int(instruction.arguments[2].name)
+            else:
+                Error.error_exit(wrongOperandType)
+
+            res_var = Variable(data_to_transfer, "int")
+            handle_variable(instruction.arguments[0].name, res_var)
+
         case "IDIV":
-            print("IDIV")
+            if int(instruction.arguments[2].name) == 0:
+                Error.error_exit(wrongOperandValue)
+            if instruction.arguments[1].type == "int" and instruction.arguments[2].type == "int":
+                data_to_transfer = int(instruction.arguments[1].name) / int(instruction.arguments[2].name)
+            else:
+                Error.error_exit(wrongOperandType)
+
+            res_var = Variable(data_to_transfer, "int")
+            handle_variable(instruction.arguments[0].name, res_var)
+
         case "LT":
-            print("LT")
+            # check if both argument1 and argument2 are same type and if they are compare them < and return bool value write it to argument0
+            if instruction.arguments[1].type == instruction.arguments[2].type:
+                if instruction.arguments[1].type == "int":
+                        if int(instruction.arguments[1].name) < int(instruction.arguments[2].name):
+                            data_to_transfer = Variable(True, "bool")
+                        else:
+                            data_to_transfer = Variable(False, "bool")
+                elif instruction.arguments[1].type == "string":
+                    if instruction.arguments[1].name < instruction.arguments[2].name:
+                        data_to_transfer = Variable(True, "bool")
+                    else:
+                        data_to_transfer = Variable(False, "bool")
+                elif instruction.arguments[1].type == "bool":
+                    if instruction.arguments[1].name < instruction.arguments[2].name:
+                        data_to_transfer = Variable(True, "bool")
+                    else:
+                        data_to_transfer = Variable(False, "bool")
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "GT":
-            print("GT")
+            # check if both argument1 and argument2 are same type and if they are compare them > and return bool value write it to argument0
+            if instruction.arguments[1].type == instruction.arguments[2].type:
+                if instruction.arguments[1].type == "int":
+                        if int(instruction.arguments[1].name) > int(instruction.arguments[2].name):
+                            data_to_transfer = Variable(True, "bool")
+                        else:
+                            data_to_transfer = Variable(False, "bool")
+                elif instruction.arguments[1].type == "string":
+                    if instruction.arguments[1].name > instruction.arguments[2].name:
+                        data_to_transfer = Variable(True, "bool")
+                    else:
+                        data_to_transfer = Variable(False, "bool")
+                elif instruction.arguments[1].type == "bool":
+                    if instruction.arguments[1].name > instruction.arguments[2].name:
+                        data_to_transfer = Variable(True, "bool")
+                    else:
+                        data_to_transfer = Variable(False, "bool")
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "EQ":
-            print("EQ")
+            # check if both argument1 and argument2 are same type and if they are compare them == and return bool value write it to argument0
+            if instruction.arguments[1].type == instruction.arguments[2].type:
+                if instruction.arguments[1].type == "int":
+                    if int(instruction.arguments[1].name) == int(instruction.arguments[2].name):
+                        data_to_transfer = Variable(True, "bool")
+                    else:
+                        data_to_transfer = Variable(False, "bool")
+                elif instruction.arguments[1].type == "string":
+                    if instruction.arguments[1].name == instruction.arguments[2].name:
+                        data_to_transfer = Variable(True, "bool")
+                    else:
+                        data_to_transfer = Variable(False, "bool")
+                elif instruction.arguments[1].type == "bool":
+                    if instruction.arguments[1].name == instruction.arguments[2].name:
+                        data_to_transfer = Variable(True, "bool")
+                    else:
+                        data_to_transfer = Variable(False, "bool")
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "AND":
-            print("AND")
+            # check if argument1 and argument2 are bool and if they are compare them and return bool value write it to argument0
+            if instruction.arguments[1].type == "bool" and instruction.arguments[2].type == "bool":
+                if instruction.arguments[1].name == "true" and instruction.arguments[2].name == "true":
+                    data_to_transfer = Variable(True, "bool")
+                else:
+                    data_to_transfer = Variable(False, "bool")
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "OR":
-            print("OR")
-        case "NOT":
-            print("NOT")
+            # check if argument1 and argument2 are bool and if they are OR them and return bool value write it to argument0
+            if instruction.arguments[1].type == "bool" and instruction.arguments[2].type == "bool":
+                if instruction.arguments[1].name == "true" or instruction.arguments[2].name == "true":
+                    data_to_transfer = Variable(True, "bool")
+                else:
+                    data_to_transfer = Variable(False, "bool")
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "STRI2INT":
-            print("STRI2INT")
+            # check if argument1 is string and argument 2 is int and if they are convert char at position argument2 to int and write it to argument0
+            if instruction.arguments[1].type == "string" and instruction.arguments[2].type == "int":
+                if int(instruction.arguments[2].name) < len(instruction.arguments[1].name):
+                    data_to_transfer = ord(instruction.arguments[1].name[int(instruction.arguments[2].name)])
+                else:
+                    Error.error_exit(wrongOperandValue)
+            else:
+                Error.error_exit(wrongOperandType)
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "CONCAT":
-            print("CONCAT")
+            # check if argument1 and argument2 are string and if they are concatenate them and write it to argument0
+            if instruction.arguments[1].type == "string" and instruction.arguments[2].type == "string":
+                data_to_transfer = instruction.arguments[1].name + instruction.arguments[2].name
+            else:
+                Error.error_exit(wrongOperandValue)
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "GETCHAR":
-            print("GETCHAR")
+            # check if argument1 is string and argument 2 is int and if they are get char at position argument2 and write it to argument0
+            if instruction.arguments[1].type == "string" and instruction.arguments[2].type == "int":
+                if int(instruction.arguments[2].name) < len(instruction.arguments[1].name):
+                    data_to_transfer = instruction.arguments[1].name[int(instruction.arguments[2].name)]
+                else:
+                    Error.error_exit(wrongOperandValue)
+            else:
+                Error.error_exit(wrongOperandType)
+            handle_variable(instruction.arguments[0].name, data_to_transfer)
+
         case "SETCHAR":
-            print("SETCHAR")
+            # check if argument2 is string and argument 1 is int. check if Var from argument 0 is not empty.set first char from argument2 to position argument1 in argument0
+            if instruction.arguments[1].type == "string" and instruction.arguments[2].type == "int":
+                #fix handle variable
+                if int(instruction.arguments[2].name) < len(instruction.arguments[0].name):
+                    char_to_insert = instruction.arguments[2].name[0]
+                    num = int(instruction.arguments[1].name)
+                    var_to_change = handle_variable(instruction.arguments[0].name, None)
+                    var_to_change.name = var_to_change.name[:num] + char_to_insert + var_to_change.name[num + 1:]
+                    handle_variable(instruction.arguments[0].name, var_to_change)
+                else:
+                    Error.error_exit(wrongOperandValue)
+            else:
+                Error.error_exit(wrongOperandType)
         case "JUMPIFEQ":
-            print("JUMPIFEQ")
+            # check if argument1 and argument2 are same type and if they are compare them == and if they are equal jump to label
+            if instruction.arguments[1].type == instruction.arguments[2].type:
+                if instruction.arguments[1].type == "int":
+                    if int(instruction.arguments[1].name) == int(instruction.arguments[2].name):
+                        label_jump = instruction.arguments[0].name
+                        current_instruction = labels[label_jump]
+                elif instruction.arguments[1].type == "bool":
+                    if instruction.arguments[1].name == instruction.arguments[2].name:
+                        label_jump = instruction.arguments[0].name
+                        current_instruction = labels[label_jump]
+                elif instruction.arguments[1].type == "string":
+                    if instruction.arguments[1].name == instruction.arguments[2].name:
+                        label_jump = instruction.arguments[0].name
+                        current_instruction = labels[label_jump]
+
+
         case "JUMPIFNEQ":
-            print("JUMPIFNEQ")
+            # check if argument1 and argument2 are same type and if they are compare them != and if they are not equal jump to label
+            if instruction.arguments[1].type == instruction.arguments[2].type:
+                if instruction.arguments[1].type == "int":
+                    if int(instruction.arguments[1].name) != int(instruction.arguments[2].name):
+                        label_jump = instruction.arguments[0].name
+                        current_instruction = labels[label_jump]
+                elif instruction.arguments[1].type == "bool":
+                    if instruction.arguments[1].name != instruction.arguments[2].name:
+                        label_jump = instruction.arguments[0].name
+                        current_instruction = labels[label_jump]
+                elif instruction.arguments[1].type == "string":
+                    if instruction.arguments[1].name != instruction.arguments[2].name:
+                        label_jump = instruction.arguments[0].name
+                        current_instruction = labels[label_jump]
 
 
-def interpret_code(list_cleared, input_split):
+def interpret_code(list_instruct, input_split):
     global GF
     global TF
     global LF
@@ -295,25 +591,31 @@ def interpret_code(list_cleared, input_split):
     global source_second
     global label_jump
     global current_instruction
-    global done_count
+    global done_instruction_count
 
-    label_index(list_cleared)
+    global labels
+    labels= label_index(list)
 
-    while current_instruction < len(list_cleared):
-        instruction = list_cleared[current_instruction]
+    while current_instruction < len(list_instruct):
+        instruction = list_instruct[current_instruction]
         current_instruction += 1
-        done_count += 1
+        done_instruction_count += 1
 
         for argument in instruction.arguments:
             if argument.name.upper() in ("CREATEFRAME", "PUSHFRAME", "POPFRAME", "RETURN", "BREAK"):
                 no_argument_instruction(argument)
 
+            elif argument.name.upper() in ("PUSHS", "POPS", "DEFVAR", "CALL", "LABEL", "JUMP", "DPRINT", "WRITE", "EXIT"):
+                one_argument_instruction(argument, labels)
 
+            elif argument.name.upper() in ("MOVE", "INT2CHAR", "STRLEN", "TYPE"):
+                two_argument_instruction(argument)
 
+            elif argument.name.upper() in ("ADD", "SUB", "MUL", "IDIV", "LT", "GT", "EQ", "AND", "OR", "NOT", "STRI2INT", "CONCAT", "GETCHAR", "SETCHAR", "JUMPIFEQ", "JUMPIFNEQ"):
+                three_argument_instruction(argument)
 
-
-
-
+            else:
+                Error.error_exit(wrongOperandType)
 
 
 def main():
@@ -337,9 +639,8 @@ def main():
     for each in list_instructions:
         print(each)
     check_labels(list_instructions)
-    list_instructions_cleared = replace_escape_sequences(list_instructions)
 
-    # interpret_code(list_instructions_cleared, input_split)
+    interpret_code(list_instructions, input_split)
 
     exit(0)
 
