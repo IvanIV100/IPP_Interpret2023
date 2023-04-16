@@ -8,7 +8,7 @@ import re
 global_frame = {}
 local_frame = []
 temp_frame = None
-
+input_file_split = []
 data_stack = []
 call_stack = []
 labels_ordered = {}
@@ -37,14 +37,14 @@ class Argument:
 class Instruction:
     def __init__(self, opcode, arg_list, order=0):
         if not opcode:
-            Error.error_exit(internalError)
+            Error.error_exit(thirtytwo)
         self.opcode = opcode.upper()
         self.arg_list = arg_list
         if order:
             try:
                 self.order = int(order)
             except (Exception,):
-                Error.error_exit(internalError)
+                Error.error_exit(ninetynine)
         else:
             self.order = None
 
@@ -86,19 +86,19 @@ class Error:
         sys.exit(self.code)
 
 
-wrongParameters = Error("Missing parameter or illegal combination\n", 10)
-cannotOpenSourceFiles = Error("Cannot open source files\n", 11)
-cannotOpenOutputFiles = Error("Cannot open files to write\n", 12)
-internalError = Error("Internal error\n", 99)
-xmlNotWellFormated = Error("Wrong XML syntax, not well formatted\n", 31)
-xmlStructureSyntaxLex = Error("Wrong XML structure or syntactic/lexical error\n", 32)
-semantics = Error("semantics error, e.g. not defined label or redefinition of label\n", 52)
-wrongOperandType = Error("Wrong operand type\n", 53)
-variableNotDefined = Error("Accessing not defined variable, frame exists\n", 54)
-frameNotExists = Error("Frame not exists\n", 55)
-missingValue = Error("Missing value in variable or stack\n", 56)
-wrongOperandValue = Error("Wrong operand value, e.g. division by zero\n", 57)
-wrongStringManipulation = Error("Wrong string manipulation", 58)
+ten = Error("Missing parameter or illegal combination\n", 10)
+eleven = Error("Cannot open source files\n", 11)
+twelve = Error("Cannot open files to write\n", 12)
+ninetynine = Error("Internal error\n", 99)
+thirtyone = Error("Wrong XML syntax, not well formatted\n", 31)
+thirtytwo= Error("Wrong XML structure or syntactic/lexical error\n", 32)
+fiftytwo = Error("Semantics error, e.g. not defined label or redefinition of label\n", 52)
+fiftythree = Error("Wrong operand type\n", 53)
+fiftyfour = Error("Accessing not defined variable, frame exists\n", 54)
+fiftyfive = Error("Frame not exists\n", 55)
+fiftysix = Error("Missing value in variable or stack\n", 56)
+fiftyseven = Error("Wrong operand value, e.g. division by zero\n", 57)
+fiftyeight = Error("Wrong string manipulation\n", 58)
 
 
 def argument_parser():
@@ -113,7 +113,7 @@ def argument_parser():
     if arguments.input:
         control_list.append(arguments.input)
     if len(control_list) == 0:
-        Error.error_exit(wrongParameters)
+        Error.error_exit(ten)
 
     return arguments.source, arguments.input
 
@@ -125,50 +125,69 @@ def split_to_lines(file):
                 data_lines = [line.strip() for line in in_file.readlines()]
                 in_file.close()
         except (Exception,):
-            Error.error_exit(cannotOpenSourceFiles)
+            Error.error_exit(eleven)
 
     else:
         return None
     return data_lines
 
 
+def check_xml_start(root):
+    if root.tag != "program":
+        Error.error_exit(thirtytwo)
+    if root.attrib["language"].upper() != "IPPcode23".upper():
+        Error.error_exit(thirtytwo)
+    for att in root.attrib:
+        if att not in ["language", "name", "description"]:
+            Error.error_exit(thirtytwo)
+
+
 def load_xml_to_list(root):
     list_parsed = []
-
     for child in root:
+        if child.tag != "instruction":
+            Error.error_exit(thirtytwo)
+        # instruction check
         child_arguments = []
-
         # maybe missing check xml arg order correct
         for each in child:
             for att in each.attrib:
                 if att != "type":
-                    Error.error_exit(xmlStructureSyntaxLex)
-            matched = re.search("^arg([1-3])$", each.tag)
-            if not matched:
-                Error.error_exit(xmlStructureSyntaxLex)
-
-            order_num = matched.group(1)
-            argument = Argument(each.get("type"), each.text, order_num)
-            child_arguments.append(argument)
+                    Error.error_exit(thirtytwo)
+                matched = re.search("^arg([1-3])$", each.tag)
+                if matched:
+                    order_num = each.tag.replace("arg", "")
+                    argument = Argument(each.get("type"), each.text, order_num)
+                    child_arguments.append(argument)
         child_arguments.sort(key=lambda argument: argument.order)
-
         for index, argument in enumerate(child_arguments, start=1):
+            if argument.order < 1:
+                Error.error_exit(thirtytwo)
             if argument.order != index:
-                Error.error_exit(xmlStructureSyntaxLex)
+                Error.error_exit(thirtytwo)
         instruction = Instruction(child.get("opcode"), child_arguments, child.get("order"))
         list_parsed.append(instruction)
+
     list_parsed.sort(key=lambda instruction: instruction.order)
+    instruction_order_list = []
+    for instruction in list_parsed:
+        if instruction.order in instruction_order_list:
+            Error.error_exit(thirtytwo)
+        else:
+            instruction_order_list.append(instruction.order)
+        if instruction.order is None:
+            Error.error_exit(thirtytwo)
+        if int(instruction.order) < 1:
+            Error.error_exit(thirtytwo)
+
     return list_parsed
 
 
 # check if type matches with value
 def symbol_check_and_return(symbol):
-    split = symbol.split("@")
-    if len(split) != 2:
-        Error.error_exit(xmlStructureSyntaxLex)
-
-    type_symbol = split[0]
-    val = split[1]
+    output = None
+    type_symbol = symbol.val_type
+    val = symbol.value
     output = Variable(None, val, type_symbol)
     return output
 
@@ -177,31 +196,39 @@ def variable_check_and_return(variable):
     global global_frame
     global local_frame
     global temp_frame
-
+    to_return = None
+    split_frame_name = variable.split("@")
+    if len(split_frame_name) != 2:
+        Error.error_exit(fiftythree)
     frame = variable.split("@")[0]
     name = variable.split("@")[1]
 
     match frame:
         case "GF":
             if name not in global_frame:
-                Error.error_exit(variableNotDefined)
+                Error.error_exit(fiftyfour)
             else:
-                return global_frame[name]
+                to_return = global_frame[name]
+
         case "LF":
             if len(local_frame) == 0:
-                Error.error_exit(frameNotExists)
+                Error.error_exit(fiftyfive)
             if name not in local_frame[-1]:
-                Error.error_exit(variableNotDefined)
+                Error.error_exit(fiftyfour)
             else:
-                return local_frame[-1][name]
+                to_return = local_frame[-1][name]
 
         case "TF":
             if not temp_frame:
-                Error.error_exit(frameNotExists)
+                Error.error_exit(fiftyfive)
             if name not in temp_frame:
-                Error.error_exit(variableNotDefined)
+                Error.error_exit(fiftyfour)
             else:
-                return temp_frame[name]
+                to_return = temp_frame[name]
+    if not to_return:
+        Error.error_exit(fiftytwo)
+    else:
+        return to_return
 
 
 def execute_defvar(to_define):
@@ -209,6 +236,7 @@ def execute_defvar(to_define):
     global local_frame
     global temp_frame
 
+    # add check for format
     frame = to_define.split("@")[0]
     name = to_define.split("@")[1]
 
@@ -217,23 +245,21 @@ def execute_defvar(to_define):
             if name not in global_frame:
                 global_frame[name] = Variable(name, None, None)
             else:
-                Error.error_exit(semantics)
+                Error.error_exit(fiftytwo)
 
         case "LF":
-            if len(local_frame) == 0:
-                Error.error_exit(frameNotExists)
             if name not in local_frame[-1]:
                 local_frame[-1][name] = Variable(name, None, None)
             else:
-                Error.error_exit(semantics)
+                Error.error_exit(fiftytwo)
 
         case "TF":
             if not temp_frame:
-                Error.error_exit(frameNotExists)
+                Error.error_exit(fiftyfive)
             if name not in temp_frame:
                 temp_frame[name] = Variable(name, None, None)
             else:
-                Error.error_exit(semantics)
+                Error.error_exit(fiftytwo)
 
 
 def no_argument_instruction(instruction):
@@ -243,25 +269,34 @@ def no_argument_instruction(instruction):
     global current_instruction_index
     global done_instructions
 
+    if len(instruction.arg_list) != 0:
+        Error.error_exit(thirtytwo)
+
     match instruction.opcode.upper():
         case "CREATEFRAME":
-            temp_frame = {}
+            temp_frame = []
 
         case "PUSHFRAME":
             if not temp_frame:
-                Error.error_exit(frameNotExists)
-            local_frame.append(temp_frame)
+                Error.error_exit(fiftyfive)
+
+            # fix this
+            for each in temp_frame:
+                name_in_temp = variable_check_and_return(each)
+                new_name = "LF@" + each.split("@")[1]
+                new_var = Variable(new_name, name_in_temp.value, name_in_temp.val_type)
+                local_frame.append(new_var)
             temp_frame = None
 
         case "POPFRAME":
             if len(local_frame) == 0:
-                Error.error_exit(frameNotExists)
-            temp_frame = local_frame.pop()
+                Error.error_exit(fiftyfive)
+            temp_frame = local_frame.pop(-1)
 
         case "RETURN":
             if len(call_stack) == 0:
-                Error.error_exit(missingValue)
-            current_instruction_index = call_stack.pop()
+                Error.error_exit(fiftysix)
+            current_instruction_index = call_stack.pop(-1)
 
         case "BREAK":
             sys.stderr.write("Current instruction count: " + str(done_instructions) + "\n")
@@ -270,32 +305,35 @@ def no_argument_instruction(instruction):
 def one_argument_instruction(instruction):
     global data_stack
     global current_instruction_index
+    global labels_ordered
+    global call_stack
 
     if len(instruction.arg_list) != 1:
-        Error.error_exit(xmlStructureSyntaxLex)
+        Error.error_exit(thirtytwo)
+
     match instruction.opcode.upper():
         case "PUSHS":
             # check fromat
-            data_to_push = instruction.arg_list[0].value
-            data_stack.append(data_to_push)
+            if instruction.arg_list[0].val_type == "var":
+                data_to_push = variable_check_and_return(instruction.arg_list[0].value)
+            else:
+                data_to_push = symbol_check_and_return(instruction.arg_list[0])
+            data_to_push_new = Variable(None, data_to_push.value, data_to_push.var_type)
+            data_stack.append(data_to_push_new)
 
         case "POPS":
             if len(data_stack) == 0:
-                Error.error_exit(missingValue)
-            data_to_pop = data_stack.pop()
+                Error.error_exit(fiftysix)
+            data_to_pop = data_stack.pop(-1)
             var_to_file = variable_check_and_return(instruction.arg_list[0].value)
-            type_to_pop = type(data_to_pop)
-            try:
-                var_to_file.update_value(instruction.arg_list[0].value, data_to_pop, type_to_pop)
-            except(Exception,):
-                Error.error_exit(semantics)
+            var_to_file.update_value(data_to_pop.value, data_to_pop.var_type)
 
         case "DEFVAR":
             execute_defvar(instruction.arg_list[0].value)
 
         case "CALL":
-            call_stack.append(current_instruction_index+1)
-            current_instruction_index = labels_ordered[instruction.arg_list[0].value]
+            call_stack.append(current_instruction_index)
+            current_instruction_index = labels_ordered[str(instruction.arg_list[0].value)]
 
         case "LABEL":
             pass
@@ -310,60 +348,78 @@ def one_argument_instruction(instruction):
                 obj_to_print = variable_check_and_return(instruction.arg_list[0].value)
                 data_from_obj = obj_to_print.value
             else:
-                data_from_obj = symbol_check_and_return(instruction.arg_list[0].value)
+                data_from_obj = symbol_check_and_return(instruction.arg_list[0])
             sys.stderr.write(data_from_obj.value)
 
         case "WRITE":
             # symbol check format
             if instruction.arg_list[0].val_type == "var":
                 obj_to_write = variable_check_and_return(instruction.arg_list[0].value)
-                data_from_obj = obj_to_write.value
             else:
-                data_from_obj = instruction.arg_list[0].value
-            sys.stdout.write(data_from_obj)
+                obj_to_write = symbol_check_and_return(instruction.arg_list[0])
+
+            data_from_obj = str(obj_to_write.value)
+            print(data_from_obj, end="")
 
         case "EXIT":
             # check format
+            try:
+                int(instruction.arg_list[0].value)
+            except(Exception,):
+                Error.error_exit(fiftythree)
+
             if int(instruction.arg_list[0].value) not in range(0, 50):
-                Error.error_exit(wrongOperandType)
+                Error.error_exit(fiftyseven)
             sys.exit(int(instruction.arg_list[0].value))
 
 
-def two_argument_instruction(instruction):
+def two_argument_instruction(instruction, input_data):
     if len(instruction.arg_list) != 2:
-        Error.error_exit(xmlStructureSyntaxLex)
+        Error.error_exit(thirtytwo)
     match instruction.opcode.upper():
         case "MOVE":
             destination = variable_check_and_return(instruction.arg_list[0].value)
+
             if instruction.arg_list[1].val_type == "var":
                 source = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                source = symbol_check_and_return(instruction.arg_list[1].value)
+                source = symbol_check_and_return(instruction.arg_list[1])
             destination.update_value(source.value, source.var_type)
 
         case "INT2CHAR":
             if instruction.arg_list[0].val_type == "var":
                 data_to_convert = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                data_to_convert = symbol_check_and_return(instruction.arg_list[1].value)
+                data_to_convert = symbol_check_and_return(instruction.arg_list[1])
             try:
-                converted = chr(data_to_convert)
+                converted = chr(int(data_to_convert.value))
             except (Exception,):
-                Error.error_exit(wrongStringManipulation)
+                # fix other err code
+                Error.error_exit(fiftythree)
 
             destination = variable_check_and_return(instruction.arg_list[0].value)
             destination.update_value(converted, "string")
 
         case "STRLEN":
             destination = variable_check_and_return(instruction.arg_list[0].value)
-            to_check = symbol_check_and_return(instruction.arg_list[1].value)
-            if type(to_check) != str:
-                Error.error_exit(wrongStringManipulation)
-            destination.update_value(len(to_check.value), "int")
+            if instruction.arg_list[1].val_type == "var":
+                to_check = variable_check_and_return(instruction.arg_list[1].value)
+            else:
+                to_check = symbol_check_and_return(instruction.arg_list[1])
+            if to_check.var_type != "string":
+                Error.error_exit(fiftythree)
+            try:
+                str_len = len(to_check.value)
+            except (Exception,):
+                Error.error_exit(fiftyseven)
+            destination.update_value(str_len, "int")
 
         case "TYPE":
             destination = variable_check_and_return(instruction.arg_list[0].value)
-            to_type = symbol_check_and_return(instruction.arg_list[1].value)
+            if instruction.arg_list[1].val_type == "var":
+                to_type = variable_check_and_return(instruction.arg_list[1].value)
+            else:
+                to_type = symbol_check_and_return(instruction.arg_list[1])
             if to_type.var_type is not None:
                 destination.update_value(to_type.var_type, "string")
             else:
@@ -372,335 +428,341 @@ def two_argument_instruction(instruction):
         case "NOT":
             # finish different types conversion
             destination = variable_check_and_return(instruction.arg_list[0].value)
-            to_not = symbol_check_and_return(instruction.arg_list[1].value)
-            if to_not.var_type == "bool":
-                destination.update_value(not to_not.value, "bool")
+            if instruction.arg_list[1].val_type == "var":
+                to_not = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                Error.error_exit(wrongOperandType)
+                to_not = symbol_check_and_return(instruction.arg_list[1])
+            if to_not.var_type == "bool":
+                if to_not.value == "true":
+                    destination.update_value("false", "bool")
+                elif to_not.value == "false":
+                    destination.update_value("true", "bool")
+            else:
+                Error.error_exit(fiftythree)
 
         case "READ":
             # TODO finish type conversion and input reading
+            # mozno double pokus o read z konzoly
             destination = variable_check_and_return(instruction.arg_list[0].value)
+            #fix reading from input_data
             try:
-                input_value = input()
+                input_value = input_data.pop(0)
             except (Exception,):
-                Error.error_exit(internalError)
+                Error.error_exit(fiftyfour)
+
             # check for type from argument 1 and convert input_value to that type (bool, string, int)
-            if destination.var_type == "bool":
+            if str(instruction.arg_list[1].value) == "bool":
                 if input_value.upper() == "TRUE":
-                    destination.update_value(True, "bool")
+                    destination.update_value("true", "bool")
                 else:
-                    destination.update_value(False, "bool")
-            elif destination.var_type == "int":
+                    destination.update_value("false", "bool")
+            elif str(instruction.arg_list[1].value) == "int":
                 try:
                     input_value = int(input_value)
                 except (Exception,):
-                    Error.error_exit(wrongOperandType)
+                    Error.error_exit(fiftythree)
                 destination.update_value(input_value, "int")
-            elif destination.var_type == "string":
+            elif str(instruction.arg_list[1].value) == "string":
                 try:
                     input_value = str(input_value)
                 except (Exception,):
-                    Error.error_exit(wrongOperandType)
+                    Error.error_exit(fiftythree)
                 destination.update_value(input_value, "string")
             else:
-                Error.error_exit(wrongOperandValue)
+                Error.error_exit(thirtytwo)
 
 
 def three_argument_instruction(instruction):
     global current_instruction_index
     if len(instruction.arg_list) != 3:
-        Error.error_exit(xmlStructureSyntaxLex)
+        Error.error_exit(thirtytwo)
     match instruction.opcode.upper():
         case "ADD":
             destination = variable_check_and_return(instruction.arg_list[0].value)
             if instruction.arg_list[1].val_type == "var":
                 first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                first = symbol_check_and_return(instruction.arg_list[1].value)
+                first = symbol_check_and_return(instruction.arg_list[1])
             if instruction.arg_list[2].val_type == "var":
                 second = variable_check_and_return(instruction.arg_list[2].value)
             else:
-                second = symbol_check_and_return(instruction.arg_list[2].value)
+                second = symbol_check_and_return(instruction.arg_list[2])
             if first.var_type == "int" and second.var_type == "int":
                 destination.update_value(first.value + second.value, "int")
             else:
-                Error.error_exit(wrongOperandType)
+                Error.error_exit(fiftythree)
 
         case "SUB":
             destination = variable_check_and_return(instruction.arg_list[0].value)
             if instruction.arg_list[1].val_type == "var":
                 first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                first = symbol_check_and_return(instruction.arg_list[1].value)
+                first = symbol_check_and_return(instruction.arg_list[1])
             if instruction.arg_list[2].val_type == "var":
                 second = variable_check_and_return(instruction.arg_list[2].value)
             else:
-                second = symbol_check_and_return(instruction.arg_list[2].value)
+                second = symbol_check_and_return(instruction.arg_list[2])
             if first.var_type == "int" and second.var_type == "int":
-                destination.update_value(first.value - second.value, "int")
+                destination.update_value(int(first.value) - int(second.value), "int")
             else:
-                Error.error_exit(wrongOperandType)
+                Error.error_exit(fiftythree)
 
         case "MUL":
             destination = variable_check_and_return(instruction.arg_list[0].value)
             if instruction.arg_list[1].val_type == "var":
                 first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                first = symbol_check_and_return(instruction.arg_list[1].value)
+                first = symbol_check_and_return(instruction.arg_list[1])
             if instruction.arg_list[2].val_type == "var":
                 second = variable_check_and_return(instruction.arg_list[2].value)
             else:
-                second = symbol_check_and_return(instruction.arg_list[2].value)
+                second = symbol_check_and_return(instruction.arg_list[2])
             if first.var_type == "int" and second.var_type == "int":
-                destination.update_value(first.value * second.value, "int")
+                destination.update_value(int(first.value) * int(second.value), "int")
             else:
-                Error.error_exit(wrongOperandType)
+                Error.error_exit(fiftythree)
 
         case "IDIV":
             destination = variable_check_and_return(instruction.arg_list[0].value)
             if instruction.arg_list[1].val_type == "var":
                 first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                first = symbol_check_and_return(instruction.arg_list[1].value)
+                first = symbol_check_and_return(instruction.arg_list[1])
             if instruction.arg_list[2].val_type == "var":
                 second = variable_check_and_return(instruction.arg_list[2].value)
             else:
-                second = symbol_check_and_return(instruction.arg_list[2].value)
-            if second.value == 0:
-                Error.error_exit(wrongOperandType)
+                second = symbol_check_and_return(instruction.arg_list[2])
+
+                # maybe bad error
+
             if first.var_type == "int" and second.var_type == "int":
-                destination.update_value(first.value / second.value, "int")
+                if int(second.value) == 0:
+                    Error.error_exit(fiftyseven)
+                destination.update_value(int(first.value) / int(second.value), "int")
             else:
-                Error.error_exit(wrongOperandType)
+                Error.error_exit(fiftythree)
 
         case "LT":
             destination = variable_check_and_return(instruction.arg_list[0].value)
-
-            if instruction.arg_list[1].arg_type == instruction.arg_list[2].arg_type:
-                if instruction.arg_list[1].val_type == "var":
-                    first = variable_check_and_return(instruction.arg_list[1].value)
-                else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
-                if instruction.arg_list[2].val_type == "var":
-                    second = variable_check_and_return(instruction.arg_list[2].value)
-                else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
-
-                if first.value < second.value:
-                    destination.update_value(True, "bool")
-                else:
-                    destination.update_value(False, "bool")
+            if instruction.arg_list[1].val_type == "var":
+                first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                Error.error_exit(wrongOperandType)
+                first = symbol_check_and_return(instruction.arg_list[1])
+            if instruction.arg_list[2].val_type == "var":
+                second = variable_check_and_return(instruction.arg_list[2].value)
+            else:
+                second = symbol_check_and_return(instruction.arg_list[2])
+            if first.var_type == second.var_type:
+                if first.value < second.value:
+                    destination.update_value("true", "bool")
+                else:
+                    destination.update_value("false", "bool")
+            else:
+                Error.error_exit(fiftythree)
 
         case "GT":
             destination = variable_check_and_return(instruction.arg_list[0].value)
 
-            if instruction.arg_list[1].arg_type == instruction.arg_list[2].arg_type:
-                if instruction.arg_list[1].val_type == "var":
-                    first = variable_check_and_return(instruction.arg_list[1].value)
-                else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
-                if instruction.arg_list[2].val_type == "var":
-                    second = variable_check_and_return(instruction.arg_list[2].value)
-                else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
-
-                if first.value > second.value:
-                    destination.update_value(True, "bool")
-                else:
-                    destination.update_value(False, "bool")
+            if instruction.arg_list[1].val_type == "var":
+                first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                Error.error_exit(wrongOperandType)
+                first = symbol_check_and_return(instruction.arg_list[1])
+            if instruction.arg_list[2].val_type == "var":
+                second = variable_check_and_return(instruction.arg_list[2].value)
+            else:
+                second = symbol_check_and_return(instruction.arg_list[2])
+
+            if first.var_type == second.var_type:
+                if first.value > second.value:
+                    destination.update_value("true", "bool")
+                else:
+                    destination.update_value("false", "bool")
+            else:
+                Error.error_exit(fiftythree)
 
         case "EQ":
             destination = variable_check_and_return(instruction.arg_list[0].value)
-
-            if instruction.arg_list[1].arg_type == instruction.arg_list[2].arg_type:
-                if instruction.arg_list[1].val_type == "var":
-                    first = variable_check_and_return(instruction.arg_list[1].value)
-                else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
-                if instruction.arg_list[2].val_type == "var":
-                    second = variable_check_and_return(instruction.arg_list[2].value)
-                else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
-
-                if first.value == second.value:
-                    destination.update_value(True, "bool")
-                else:
-                    destination.update_value(False, "bool")
+            if instruction.arg_list[1].val_type == "var":
+                first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                Error.error_exit(wrongOperandType)
+                first = symbol_check_and_return(instruction.arg_list[1])
+            if instruction.arg_list[2].val_type == "var":
+                second = variable_check_and_return(instruction.arg_list[2].value)
+            else:
+                second = symbol_check_and_return(instruction.arg_list[2])
+
+            if first.var_type == second.var_type:
+                if first.value == second.value:
+                    destination.update_value("true", "bool")
+                else:
+                    destination.update_value("false", "bool")
+            else:
+                Error.error_exit(fiftythree)
 
         case "AND":
             destination = variable_check_and_return(instruction.arg_list[0].value)
-
-            if instruction.arg_list[1].arg_type == instruction.arg_list[2].arg_type\
-                    and instruction.arg_list[1].arg_type == "bool":
-                if instruction.arg_list[1].val_type == "var":
-                    first = variable_check_and_return(instruction.arg_list[1].value)
-                else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
-                if instruction.arg_list[2].val_type == "var":
-                    second = variable_check_and_return(instruction.arg_list[2].value)
-                else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
-
-                if first.value and second.value:
-                    destination.update_value(True, "bool")
-                else:
-                    destination.update_value(False, "bool")
+            if instruction.arg_list[1].val_type == "var":
+                first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                Error.error_exit(wrongOperandType)
+                first = symbol_check_and_return(instruction.arg_list[1])
+            if instruction.arg_list[2].val_type == "var":
+                second = variable_check_and_return(instruction.arg_list[2].value)
+            else:
+                second = symbol_check_and_return(instruction.arg_list[2])
+
+            if first.var_type == "bool" and second.var_type == "bool":
+                if first.value and second.value:
+                    destination.update_value("true", "bool")
+                else:
+                    destination.update_value("false", "bool")
+            else:
+                Error.error_exit(fiftythree)
 
         case "OR":
             destination = variable_check_and_return(instruction.arg_list[0].value)
 
-            if instruction.arg_list[1].arg_type == instruction.arg_list[2].arg_type \
-                    and instruction.arg_list[1].arg_type == "bool":
-                if instruction.arg_list[1].val_type == "var":
-                    first = variable_check_and_return(instruction.arg_list[1].value)
-                else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
-                if instruction.arg_list[2].val_type == "var":
-                    second = variable_check_and_return(instruction.arg_list[2].value)
-                else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
-
-                if first.value or second.value:
-                    destination.update_value(True, "bool")
-                else:
-                    destination.update_value(False, "bool")
+            if instruction.arg_list[1].val_type == "var":
+                first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                Error.error_exit(wrongOperandType)
+                first = symbol_check_and_return(instruction.arg_list[1])
+            if instruction.arg_list[2].val_type == "var":
+                second = variable_check_and_return(instruction.arg_list[2].value)
+            else:
+                second = symbol_check_and_return(instruction.arg_list[2])
+            if first.var_type != "bool" or second.var_type != "bool":
+                Error.error_exit(fiftythree)
+            if first.value == "true" or second.value == "true":
+                destination.update_value("true", "bool")
+            else:
+                destination.update_value("false", "bool")
 
         case "STRI2INT":
             destination = variable_check_and_return(instruction.arg_list[0].value)
 
-            if instruction.arg_list[1].arg_type == "string" and instruction.arg_list[2].arg_type == "int":
-                if instruction.arg_list[1].val_type == "var":
-                    first = variable_check_and_return(instruction.arg_list[1].value)
-                else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
-                if instruction.arg_list[2].val_type == "var":
-                    second = variable_check_and_return(instruction.arg_list[2].value)
-                else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
-
-                if second.value >= len(first.value) or second.value < 0:
-                    Error.error_exit(wrongOperandValue)
-                else:
-                    destination.update_value(ord(first.value[second.value]), "int")
+            if instruction.arg_list[1].val_type == "var":
+                first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                Error.error_exit(wrongOperandType)
+                first = symbol_check_and_return(instruction.arg_list[1])
+            if instruction.arg_list[2].val_type == "var":
+                second = variable_check_and_return(instruction.arg_list[2].value)
+            else:
+                second = symbol_check_and_return(instruction.arg_list[2])
+
+            if first.var_type != "string" or second.var_type != "int":
+                Error.error_exit(fiftythree)
+            if int(second.value) > len(first.value) or int(second.value) < 0:
+                Error.error_exit(fiftyeight)
+            else:
+                value_to_change = ord(first.value[int(second.value)])
+                destination.update_value(value_to_change, "int")
+
 
         case "CONCAT":
             destination = variable_check_and_return(instruction.arg_list[0].value)
-            if instruction.arg_list[1].arg_type == "string" and instruction.arg_list[2].arg_type == "string":
+            if instruction.arg_list[1].val_type == "string" and instruction.arg_list[2].val_type == "string":
                 if instruction.arg_list[1].val_type == "var":
                     first = variable_check_and_return(instruction.arg_list[1].value)
                 else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
+                    first = symbol_check_and_return(instruction.arg_list[1])
                 if instruction.arg_list[2].val_type == "var":
                     second = variable_check_and_return(instruction.arg_list[2].value)
                 else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
+                    second = symbol_check_and_return(instruction.arg_list[2])
 
                 destination.update_value(first.value + second.value, "string")
             else:
-                Error.error_exit(wrongOperandType)
+                Error.error_exit(fiftythree)
 
         case "GETCHAR":
             destination = variable_check_and_return(instruction.arg_list[0].value)
-
-            if instruction.arg_list[1].arg_type == "string" and instruction.arg_list[2].arg_type == "int":
+            # fix this with correct var or symbol check and return code
+            if instruction.arg_list[1].val_type == "string" and instruction.arg_list[2].val_type == "int":
                 if instruction.arg_list[1].val_type == "var":
                     first = variable_check_and_return(instruction.arg_list[1].value)
                 else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
+                    first = symbol_check_and_return(instruction.arg_list[1])
                 if instruction.arg_list[2].val_type == "var":
                     second = variable_check_and_return(instruction.arg_list[2].value)
                 else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
+                    second = symbol_check_and_return(instruction.arg_list[2])
 
-                if second.value >= len(first.value) or second.value < 0:
-                    Error.error_exit(wrongOperandValue)
+                if int(second.value) >= len(first.value) or int(second.value) < 0:
+                    Error.error_exit(fiftyseven)
                 else:
-                    destination.update_value(first.value[second.value], "string")
+                    destination.update_value(first.value[int(second.value)], "string")
             else:
-                Error.error_exit(wrongOperandType)
+                Error.error_exit(fiftythree)
 
         case "SETCHAR":
             destination = variable_check_and_return(instruction.arg_list[0].value)
 
-            if instruction.arg_list[1].arg_type == "int" and instruction.arg_list[2].arg_type == "string":
-                if instruction.arg_list[1].val_type == "var":
-                    first = variable_check_and_return(instruction.arg_list[1].value)
-                else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
-                if instruction.arg_list[2].val_type == "var":
-                    second = variable_check_and_return(instruction.arg_list[2].value)
-                else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
-
-                if first.value >= len(destination.value) or first.value < 0:
-                    Error.error_exit(wrongOperandValue)
-                else:
-                    destination.update_value(destination.value[:first.value] + second.value[0]
-                                                + destination.value[first.value+1:], "string")
+            if instruction.arg_list[1].val_type == "var":
+                first = variable_check_and_return(instruction.arg_list[1].value)
             else:
-                Error.error_exit(wrongOperandType)
+                first = symbol_check_and_return(instruction.arg_list[1])
+            if instruction.arg_list[2].val_type == "var":
+                second = variable_check_and_return(instruction.arg_list[2].value)
+            else:
+                second = symbol_check_and_return(instruction.arg_list[2])
+
+            if first.var_type != "int" or second.var_type != "string" or destination.var_type != "string":
+                Error.error_exit(fiftythree)
+            if int(first.value) >= len(destination.value) or int(first.value) < 0 or destination.value == "":
+                Error.error_exit(fiftyeight)
+            else:
+                destination.update_value(destination.value[:int(first.value)] + second.value[0]
+                                            + destination.value[int(first.value)+1:], "string")
 
         case "JUMPIFEQ":
-            if instruction.arg_list[1].arg_type == instruction.arg_list[2].arg_type:
+            if instruction.arg_list[1].val_type == instruction.arg_list[2].val_type:
                 if instruction.arg_list[1].val_type == "var":
                     first = variable_check_and_return(instruction.arg_list[1].value)
                 else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
+                    first = symbol_check_and_return(instruction.arg_list[1])
                 if instruction.arg_list[2].val_type == "var":
                     second = variable_check_and_return(instruction.arg_list[2].value)
                 else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
+                    second = symbol_check_and_return(instruction.arg_list[2])
 
                 if first.value == second.value:
                     current_instruction_index = labels_ordered[instruction.arg_list[0].value]
             else:
-                Error.error_exit(wrongOperandType)
+                Error.error_exit(fiftythree)
 
         case "JUMPIFNEQ":
-            if instruction.arg_list[1].arg_type == instruction.arg_list[2].arg_type:
+            if instruction.arg_list[1].val_type == instruction.arg_list[2].val_type:
                 if instruction.arg_list[1].val_type == "var":
                     first = variable_check_and_return(instruction.arg_list[1].value)
                 else:
-                    first = symbol_check_and_return(instruction.arg_list[1].value)
+                    first = symbol_check_and_return(instruction.arg_list[1])
                 if instruction.arg_list[2].val_type == "var":
                     second = variable_check_and_return(instruction.arg_list[2].value)
                 else:
-                    second = symbol_check_and_return(instruction.arg_list[2].value)
+                    second = symbol_check_and_return(instruction.arg_list[2])
 
                 if first.value != second.value:
-                    current_instruction_index = labels_ordered[instruction.arg_list[0].value]
+                    current_instruction_index = labels_ordered[str(instruction.arg_list[0].value)]
 
             else:
-                Error.error_exit(wrongOperandType)
+                Error.error_exit(fiftythree)
 
 
 def check_labels(list_to_check):
+    global labels_ordered
     labels = []
     for instruction in list_to_check:
-        if instruction.opcode == "LABEL":
+        if instruction.opcode.upper() == "LABEL":
             label_name = instruction.arg_list[0].value
             if label_name in labels:
-                Error.error_exit(semantics)
+                Error.error_exit(fiftytwo)
             labels.append(label_name)
-
-        elif instruction.opcode != "LABEL":
+            labels_ordered[label_name] = list_to_check.index(instruction)
+    for instruction in list_to_check:
+        if instruction.opcode.upper() != "LABEL":
             for argument in instruction.arg_list:
                 if argument.val_type == "label":
                     if argument.value not in labels:
-                        Error.error_exit(semantics)
+                        Error.error_exit(fiftytwo)
 
 
 def interpret_code(instruction_list, input_data):
@@ -715,21 +777,22 @@ def interpret_code(instruction_list, input_data):
             no_argument_instruction(instruction)
 
         elif name_to_call in ("PUSHS", "POPS", "DEFVAR", "CALL",
-                                        "LABEL", "JUMP", "DPRINT", "WRITE", "EXIT"):
+                              "LABEL", "JUMP", "DPRINT", "WRITE", "EXIT"):
             one_argument_instruction(instruction)
 
         elif name_to_call in ("MOVE", "INT2CHAR", "STRLEN", "TYPE", "NOT", "READ"):
-            two_argument_instruction(instruction)
+            two_argument_instruction(instruction, input_data)
 
         elif name_to_call in ("ADD", "SUB", "MUL", "IDIV", "LT", "GT", "EQ", "AND", "OR", "NOT",
-                                        "STRI2INT", "CONCAT", "GETCHAR", "SETCHAR", "JUMPIFEQ", "JUMPIFNEQ"):
+                              "STRI2INT", "CONCAT", "GETCHAR", "SETCHAR", "JUMPIFEQ", "JUMPIFNEQ"):
             three_argument_instruction(instruction)
 
         else:
-            Error.error_exit(wrongOperandType)
+            Error.error_exit(thirtytwo)
 
 
 def main():
+    global input_file_split
     source_file, input_file = argument_parser()
 
     if source_file:
@@ -737,20 +800,31 @@ def main():
     else:
         # check if reading is correct
         source_file_split = [line.strip for line in sys.stdin]
-        exit()
 
     if input_file:
         input_file_split = split_to_lines(input_file)
     else:
         input_file_split = [line.strip for line in sys.stdin]
 
+    # fix checking of xml fails
     try:
-        one_line = "".join(source_file_split)
-        root = ET.fromstring(one_line)
+        string_one = "".join(source_file_split)
+        root = ET.fromstring(string_one)
     except(Exception,):
-        Error.error_exit(xmlStructureSyntaxLex)
+        Error.error_exit(thirtyone)
+
+    # check if xml is correct
+    check_xml_start(root)
 
     instruction_list = load_xml_to_list(root)
+    for instruction in instruction_list:
+        for argument in instruction.arg_list:
+            if argument.val_type == "string":
+                escaped_list = re.findall(r'(\\[0-9]{3})+', str(argument.value))
+
+                for escaped_uni in escaped_list:
+                    unicode_as_chr = chr(int(escaped_uni[1:]))
+                    argument.value = argument.value.replace(escaped_uni, unicode_as_chr)
     check_labels(instruction_list)
     interpret_code(instruction_list, input_file_split)
 
