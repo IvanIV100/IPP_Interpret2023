@@ -1,6 +1,6 @@
 # IPP_Interpret2023
 Thought it be more around 10p  mark but better than nothing.
-Might look into it over the summer and fix it if the testing scripts will be made public.
+Might look into it over the summer and fix it if the testing scripts will be made public.  \
 6.8/12
 
 Procentuální hodnocení jednotlivých kategorií skriptu interpret.py:  \
